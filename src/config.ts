@@ -5,6 +5,7 @@ export const DB_DIR = join(homedir(), ".claude", "session-logger");
 export const DB_PATH = join(DB_DIR, "data.db");
 export const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 export const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
+export const ORIGINAL_STATUSLINE_PATH = join(DB_DIR, "original-statusline.json");
 
 export const MODEL_PRICING: Record<
   string,

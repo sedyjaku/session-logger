@@ -190,9 +190,10 @@ program
   .description("Add hooks to ~/.claude/settings.json")
   .action(withErrorHandling(() => {
     const result = installHooks();
-    console.log(chalk.green("Hooks installed successfully."));
+    console.log(chalk.green("Hooks and status line installed successfully."));
     console.log(`  SessionStart → ${result.startCmd}`);
     console.log(`  SessionEnd   → ${result.endCmd}`);
+    console.log(`  StatusLine   → ${result.statusLineCmd}`);
   }));
 
 program
@@ -200,7 +201,7 @@ program
   .description("Remove hooks from settings.json")
   .action(withErrorHandling(() => {
     uninstallHooks();
-    console.log(chalk.green("Hooks uninstalled successfully."));
+    console.log(chalk.green("Hooks and status line uninstalled successfully."));
   }));
 
 program.parse();
