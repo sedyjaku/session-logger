@@ -4,6 +4,7 @@ import { getDb } from "../db.js";
 import { CLAUDE_PROJECTS_DIR } from "../config.js";
 import { parseTranscript, getPrimaryModel, sumTokens } from "./transcript.service.js";
 import { calculateCost } from "./cost.service.js";
+import { upsertModelBreakdownForDoctor, upsertAnalyticsForDoctor } from "./session.service.js";
 import type { Session } from "../types.js";
 
 interface DoctorResult {
@@ -105,6 +106,9 @@ export function runDoctor(): DoctorResult {
         );
         result.created++;
       }
+
+      upsertModelBreakdownForDoctor(t.sessionId, costBreakdown);
+      upsertAnalyticsForDoctor(t.sessionId, t.transcriptPath);
     } catch (err) {
       result.errors.push(`${t.sessionId}: ${(err as Error).message}`);
     }
