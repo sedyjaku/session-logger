@@ -13,6 +13,7 @@ export function getDb(): Database.Database {
     instance.pragma("journal_mode = WAL");
     instance.pragma("busy_timeout = 3000");
     createSchema(instance);
+    runMigrations(instance);
   } catch (err) {
     try {
       instance.close();
@@ -58,7 +59,82 @@ function createSchema(db: Database.Database): void {
       label_id INTEGER NOT NULL REFERENCES labels(id),
       PRIMARY KEY (session_id, label_id)
     );
+
+    CREATE TABLE IF NOT EXISTS session_models (
+      session_id TEXT NOT NULL REFERENCES sessions(session_id),
+      model TEXT NOT NULL,
+      input_tokens INTEGER DEFAULT 0,
+      output_tokens INTEGER DEFAULT 0,
+      cache_creation_tokens INTEGER DEFAULT 0,
+      cache_read_tokens INTEGER DEFAULT 0,
+      cost_usd REAL DEFAULT 0,
+      PRIMARY KEY (session_id, model)
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL REFERENCES sessions(session_id),
+      message_id TEXT UNIQUE NOT NULL,
+      request_id TEXT,
+      model TEXT,
+      timestamp TEXT NOT NULL,
+      stop_reason TEXT,
+      input_tokens INTEGER DEFAULT 0,
+      output_tokens INTEGER DEFAULT 0,
+      cache_creation_tokens INTEGER DEFAULT 0,
+      cache_read_tokens INTEGER DEFAULT 0,
+      cost_usd REAL DEFAULT 0,
+      thinking_tokens INTEGER DEFAULT 0,
+      has_tool_use INTEGER DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_messages_model ON messages(model);
+
+    CREATE TABLE IF NOT EXISTS tool_uses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL REFERENCES sessions(session_id),
+      message_id TEXT NOT NULL REFERENCES messages(message_id),
+      tool_use_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      input_json TEXT,
+      duration_ms INTEGER,
+      total_tokens INTEGER,
+      status TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tool_uses_session_id ON tool_uses(session_id);
+    CREATE INDEX IF NOT EXISTS idx_tool_uses_message_id ON tool_uses(message_id);
+    CREATE INDEX IF NOT EXISTS idx_tool_uses_tool_name ON tool_uses(tool_name);
+
+    CREATE TABLE IF NOT EXISTS session_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL REFERENCES sessions(session_id),
+      type TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      stop_reason TEXT,
+      duration_ms INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_session_events_session_id ON session_events(session_id);
+    CREATE INDEX IF NOT EXISTS idx_session_events_type ON session_events(type);
+    CREATE INDEX IF NOT EXISTS idx_session_events_timestamp ON session_events(timestamp);
   `);
+}
+
+function runMigrations(db: Database.Database): void {
+  const alters = [
+    "ALTER TABLE sessions ADD COLUMN git_branch TEXT",
+    "ALTER TABLE sessions ADD COLUMN claude_version TEXT",
+    "ALTER TABLE sessions ADD COLUMN message_count INTEGER DEFAULT 0",
+    "ALTER TABLE sessions ADD COLUMN tool_use_count INTEGER DEFAULT 0",
+    "ALTER TABLE sessions ADD COLUMN thinking_tokens INTEGER DEFAULT 0",
+  ];
+  for (const sql of alters) {
+    try { db.exec(sql); } catch {}
+  }
 }
 
 export function closeDb(): void {
