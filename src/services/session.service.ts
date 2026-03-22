@@ -1,8 +1,8 @@
 import { getDb } from "../db.js";
 import { MODEL_PRICING } from "../config.js";
 import type { Session, CostBreakdown, ModelBreakdown, MessageCost, MessageOutlier } from "../types.js";
-import { parseTranscript, parseTranscriptMessages, parseFullTranscript, getPrimaryModel, sumTokens } from "./transcript.service.js";
-import { calculateCost, calculateMessageCosts } from "./cost.service.js";
+import { parseTranscript, parseFullTranscript, getPrimaryModel, sumTokens } from "./transcript.service.js";
+import { calculateCost } from "./cost.service.js";
 
 function findPricingForModel(model: string) {
   for (const [prefix, pricing] of Object.entries(MODEL_PRICING)) {
@@ -290,11 +290,13 @@ export function getModelBreakdown(sessionId: string): ModelBreakdown[] {
 }
 
 export function getMessageOutliers(sessionId: string, limit = 10): MessageCost[] {
-  const session = getSession(sessionId);
-  if (!session?.transcript_path) return [];
-
-  const messages = parseTranscriptMessages(session.transcript_path);
-  return calculateMessageCosts(messages).slice(0, limit);
+  const db = getDb();
+  return db.prepare(
+    `SELECT message_id, model, input_tokens, output_tokens,
+      cache_creation_tokens, cache_read_tokens, cost_usd as cost
+     FROM messages WHERE session_id = ?
+     ORDER BY cost_usd DESC LIMIT ?`
+  ).all(sessionId, limit) as MessageCost[];
 }
 
 export function getCrossSessionOutliers(options: {
@@ -306,21 +308,13 @@ export function getCrossSessionOutliers(options: {
   const { where, params } = buildSessionFilter(options);
   const limit = options.limit || 20;
 
-  const sessions = db
-    .prepare(`SELECT s.session_id, s.transcript_path, s.project_path FROM sessions s ${where}`)
-    .all(...params) as Array<{ session_id: string; transcript_path: string | null; project_path: string }>;
-
-  const allOutliers: MessageOutlier[] = [];
-
-  for (const s of sessions) {
-    if (!s.transcript_path) continue;
-    const messages = parseTranscriptMessages(s.transcript_path);
-    const costs = calculateMessageCosts(messages);
-    for (const c of costs) {
-      allOutliers.push({ ...c, session_id: s.session_id, project_path: s.project_path });
-    }
-  }
-
-  allOutliers.sort((a, b) => b.cost - a.cost);
-  return allOutliers.slice(0, limit);
+  return db.prepare(
+    `SELECT m.message_id, m.model, m.input_tokens, m.output_tokens,
+      m.cache_creation_tokens, m.cache_read_tokens, m.cost_usd as cost,
+      s.session_id, s.project_path
+     FROM messages m
+     JOIN sessions s ON m.session_id = s.session_id
+     ${where}
+     ORDER BY m.cost_usd DESC LIMIT ?`
+  ).all(...params, limit) as MessageOutlier[];
 }
