@@ -1,7 +1,117 @@
 import { getDb } from "../db.js";
-import type { Session } from "../types.js";
-import { parseTranscript, getPrimaryModel, sumTokens } from "./transcript.service.js";
-import { calculateCost } from "./cost.service.js";
+import { MODEL_PRICING } from "../config.js";
+import type { Session, CostBreakdown, ModelBreakdown, MessageCost, MessageOutlier } from "../types.js";
+import { parseTranscript, parseTranscriptMessages, parseFullTranscript, getPrimaryModel, sumTokens } from "./transcript.service.js";
+import { calculateCost, calculateMessageCosts } from "./cost.service.js";
+
+function findPricingForModel(model: string) {
+  for (const [prefix, pricing] of Object.entries(MODEL_PRICING)) {
+    if (model.startsWith(prefix)) return pricing;
+  }
+  return null;
+}
+
+function upsertAnalytics(sessionId: string, transcriptPath: string): void {
+  const db = getDb();
+  const parsed = parseFullTranscript(transcriptPath);
+
+  db.prepare("DELETE FROM tool_uses WHERE session_id = ?").run(sessionId);
+  db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
+  db.prepare("DELETE FROM session_events WHERE session_id = ?").run(sessionId);
+
+  let messageCount = 0;
+  let toolUseCount = 0;
+  let thinkingTokens = 0;
+
+  const insertMessage = db.prepare(
+    `INSERT INTO messages (session_id, message_id, request_id, model, timestamp, stop_reason,
+      input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cost_usd, thinking_tokens, has_tool_use)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const insertToolUse = db.prepare(
+    `INSERT INTO tool_uses (session_id, message_id, tool_use_id, tool_name, timestamp, input_json, duration_ms, total_tokens, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const insertEvent = db.prepare(
+    `INSERT INTO session_events (session_id, type, timestamp, stop_reason, duration_ms)
+     VALUES (?, ?, ?, ?, ?)`
+  );
+
+  const tx = db.transaction(() => {
+    for (const msg of parsed.messages) {
+      const pricing = findPricingForModel(msg.model);
+      const costUsd = pricing
+        ? (msg.input_tokens / 1_000_000) * pricing.input +
+          (msg.output_tokens / 1_000_000) * pricing.output +
+          (msg.cache_creation_tokens / 1_000_000) * pricing.cacheCreation +
+          (msg.cache_read_tokens / 1_000_000) * pricing.cacheRead
+        : 0;
+
+      insertMessage.run(
+        sessionId, msg.id, msg.requestId, msg.model, msg.timestamp, msg.stopReason,
+        msg.input_tokens, msg.output_tokens, msg.cache_creation_tokens, msg.cache_read_tokens,
+        costUsd, msg.thinking_tokens, msg.toolUses.length > 0 ? 1 : 0
+      );
+
+      messageCount++;
+      thinkingTokens += msg.thinking_tokens;
+
+      for (const tu of msg.toolUses) {
+        const result = parsed.toolResults.get(tu.toolUseId);
+        insertToolUse.run(
+          sessionId, msg.id, tu.toolUseId, tu.toolName, msg.timestamp, tu.inputJson,
+          result?.durationMs ?? null, result?.totalTokens ?? null, result?.status ?? null
+        );
+        toolUseCount++;
+      }
+    }
+
+    for (const evt of parsed.events) {
+      insertEvent.run(sessionId, evt.type, evt.timestamp, evt.stopReason, evt.durationMs);
+    }
+
+    db.prepare(
+      `UPDATE sessions SET
+        git_branch = COALESCE(?, git_branch),
+        claude_version = COALESCE(?, claude_version),
+        message_count = ?,
+        tool_use_count = ?,
+        thinking_tokens = ?
+       WHERE session_id = ?`
+    ).run(parsed.gitBranch, parsed.claudeVersion, messageCount, toolUseCount, thinkingTokens, sessionId);
+  });
+
+  tx();
+}
+
+export function upsertAnalyticsForDoctor(sessionId: string, transcriptPath: string): void {
+  upsertAnalytics(sessionId, transcriptPath);
+}
+
+export function upsertModelBreakdownForDoctor(sessionId: string, costBreakdown: CostBreakdown): void {
+  upsertModelBreakdown(sessionId, costBreakdown);
+}
+
+function upsertModelBreakdown(sessionId: string, costBreakdown: CostBreakdown): void {
+  const db = getDb();
+  db.prepare("DELETE FROM session_models WHERE session_id = ?").run(sessionId);
+
+  const insert = db.prepare(
+    `INSERT INTO session_models (session_id, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cost_usd)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  for (const [model, data] of Object.entries(costBreakdown.byModel)) {
+    insert.run(
+      sessionId, model,
+      data.input_tokens, data.output_tokens,
+      data.cache_creation_tokens, data.cache_read_tokens,
+      data.cost
+    );
+  }
+}
 
 export function createSession(
   sessionId: string,
@@ -68,6 +178,9 @@ export function endSession(
       costBreakdown.totalCost, reason
     );
   }
+
+  upsertModelBreakdown(sessionId, costBreakdown);
+  upsertAnalytics(sessionId, transcriptPath);
 }
 
 export function syncSession(sessionId: string): boolean {
@@ -98,6 +211,9 @@ export function syncSession(sessionId: string): boolean {
     totals.input, totals.output, totals.cacheCreation, totals.cacheRead,
     costBreakdown.totalCost, sessionId
   );
+
+  upsertModelBreakdown(sessionId, costBreakdown);
+  upsertAnalytics(sessionId, session.transcript_path);
 
   return true;
 }
@@ -161,4 +277,50 @@ export function getAllSessions(): Session[] {
   return db
     .prepare("SELECT * FROM sessions ORDER BY started_at DESC")
     .all() as Session[];
+}
+
+export function getModelBreakdown(sessionId: string): ModelBreakdown[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cost_usd
+       FROM session_models WHERE session_id = ? ORDER BY cost_usd DESC`
+    )
+    .all(sessionId) as ModelBreakdown[];
+}
+
+export function getMessageOutliers(sessionId: string, limit = 10): MessageCost[] {
+  const session = getSession(sessionId);
+  if (!session?.transcript_path) return [];
+
+  const messages = parseTranscriptMessages(session.transcript_path);
+  return calculateMessageCosts(messages).slice(0, limit);
+}
+
+export function getCrossSessionOutliers(options: {
+  label?: string;
+  days?: number;
+  limit?: number;
+}): MessageOutlier[] {
+  const db = getDb();
+  const { where, params } = buildSessionFilter(options);
+  const limit = options.limit || 20;
+
+  const sessions = db
+    .prepare(`SELECT s.session_id, s.transcript_path, s.project_path FROM sessions s ${where}`)
+    .all(...params) as Array<{ session_id: string; transcript_path: string | null; project_path: string }>;
+
+  const allOutliers: MessageOutlier[] = [];
+
+  for (const s of sessions) {
+    if (!s.transcript_path) continue;
+    const messages = parseTranscriptMessages(s.transcript_path);
+    const costs = calculateMessageCosts(messages);
+    for (const c of costs) {
+      allOutliers.push({ ...c, session_id: s.session_id, project_path: s.project_path });
+    }
+  }
+
+  allOutliers.sort((a, b) => b.cost - a.cost);
+  return allOutliers.slice(0, limit);
 }
