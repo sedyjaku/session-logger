@@ -21,7 +21,7 @@ export function FilterBar({ labels, projects, models }: FilterBarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const currentDays = searchParams.get("days") || "30";
+  const currentDays = searchParams.get("days") || "";
   const currentLabel = searchParams.get("label") || "";
   const currentProject = searchParams.get("project") || "";
   const currentModel = searchParams.get("model") || "";

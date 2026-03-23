@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 function parseFilters(searchParams: Record<string, string | string[] | undefined>): DashboardFilters {
   return {
-    days: searchParams.days ? Number(searchParams.days) : 30,
+    days: searchParams.days ? Number(searchParams.days) : undefined,
     label: (searchParams.label as string) || undefined,
     project: (searchParams.project as string) || undefined,
     model: (searchParams.model as string) || undefined,
