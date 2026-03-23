@@ -227,6 +227,25 @@ program
   }));
 
 program
+  .command("dashboard")
+  .description("Start the web analytics dashboard")
+  .option("-p, --port <port>", "Port number", "3000")
+  .action(async (opts: { port: string }) => {
+    const { execFileSync } = await import("child_process");
+    const { join } = await import("path");
+    const dashboardDir = join(import.meta.dirname, "..", "dashboard");
+    console.log(chalk.cyan(`Starting dashboard on http://localhost:${opts.port} ...`));
+    try {
+      execFileSync("npx", ["next", "dev", "-p", opts.port], {
+        cwd: dashboardDir,
+        stdio: "inherit",
+      });
+    } catch {
+      process.exit(0);
+    }
+  });
+
+program
   .command("install")
   .description("Add hooks to ~/.claude/settings.json")
   .action(async () => {
