@@ -6,12 +6,16 @@ import {
   getMostRecentSession,
   syncSession,
   getAllSessions,
+  getModelBreakdown,
+  getMessageOutliers,
+  getCrossSessionOutliers,
 } from "./services/session.service.js";
 import {
   addLabel,
   removeLabel,
   listAllLabels,
   getSummary,
+  getSummaryByModel,
   getLabelsForSession,
 } from "./services/label.service.js";
 import { runDoctor } from "./services/doctor.service.js";
@@ -20,6 +24,8 @@ import {
   formatSessionDetail,
   formatLabelList,
   formatSummary,
+  formatMessageOutliers,
+  formatModelSummary,
 } from "./format.js";
 import { installHooks, uninstallHooks } from "./install.js";
 import { closeDb } from "./db.js";
@@ -67,14 +73,23 @@ program
 program
   .command("show <session-id>")
   .description("Show detailed session view")
-  .action(withErrorHandling((sessionId: unknown) => {
+  .option("-m, --messages [limit]", "Show costliest messages", parseInt)
+  .action(withErrorHandling((sessionId: unknown, opts: unknown) => {
+    const options = opts as { messages?: number | true };
     const session = getSession(sessionId as string);
     if (!session) {
       console.log(chalk.red(`Session not found: ${sessionId}`));
       process.exit(1);
     }
     const labels = getLabelsForSession(session.session_id).map((l) => l.name);
-    console.log(formatSessionDetail(session, labels));
+    const models = getModelBreakdown(session.session_id);
+    console.log(formatSessionDetail(session, labels, models));
+    if (options.messages !== undefined) {
+      const limit = typeof options.messages === "number" ? options.messages : 10;
+      const outliers = getMessageOutliers(session.session_id, limit);
+      console.log("");
+      console.log(formatMessageOutliers(outliers, false));
+    }
     closeDb();
   }));
 
@@ -133,13 +148,22 @@ program
   .description("Aggregate cost/token summary")
   .option("-l, --label <label>", "Filter by label")
   .option("-d, --days <days>", "Filter by last N days", parseInt)
+  .option("--by-model", "Show breakdown by model")
   .action(withErrorHandling((opts: unknown) => {
-    const options = opts as { label?: string; days?: number };
+    const options = opts as { label?: string; days?: number; byModel?: boolean };
     const summary = getSummary({
       label: options.label,
       days: options.days,
     });
     console.log(formatSummary(summary));
+    if (options.byModel) {
+      const modelSummary = getSummaryByModel({
+        label: options.label,
+        days: options.days,
+      });
+      console.log("");
+      console.log(formatModelSummary(modelSummary));
+    }
     closeDb();
   }));
 
@@ -186,15 +210,38 @@ program
   }));
 
 program
+  .command("outliers")
+  .description("Show costliest messages across sessions")
+  .option("-d, --days <days>", "Filter by last N days", parseInt)
+  .option("-l, --label <label>", "Filter by label")
+  .option("-n, --limit <limit>", "Max results", parseInt, 20)
+  .action(withErrorHandling((opts: unknown) => {
+    const options = opts as { days?: number; label?: string; limit?: number };
+    const outliers = getCrossSessionOutliers({
+      days: options.days,
+      label: options.label,
+      limit: options.limit,
+    });
+    console.log(formatMessageOutliers(outliers, true));
+    closeDb();
+  }));
+
+program
   .command("install")
   .description("Add hooks to ~/.claude/settings.json")
-  .action(withErrorHandling(() => {
-    const result = installHooks();
-    console.log(chalk.green("Hooks and status line installed successfully."));
-    console.log(`  SessionStart → ${result.startCmd}`);
-    console.log(`  SessionEnd   → ${result.endCmd}`);
-    console.log(`  StatusLine   → ${result.statusLineCmd}`);
-  }));
+  .action(async () => {
+    try {
+      const result = await installHooks();
+      console.log(chalk.green("Hooks and status line installed successfully."));
+      console.log(`  SessionStart → ${result.startCmd}`);
+      console.log(`  SessionEnd   → ${result.endCmd}`);
+      console.log(`  StatusLine   → ${result.statusLineCmd}`);
+    } catch (err) {
+      process.stderr.write(chalk.red((err as Error).message) + "\n");
+      closeDb();
+      process.exit(1);
+    }
+  });
 
 program
   .command("uninstall")

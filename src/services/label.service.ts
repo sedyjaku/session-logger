@@ -1,5 +1,5 @@
 import { getDb } from "../db.js";
-import type { Label, LabelStats, SessionSummary } from "../types.js";
+import type { Label, LabelStats, SessionSummary, ModelSummary } from "../types.js";
 import { buildSessionFilter } from "./session.service.js";
 
 export function addLabel(sessionId: string, labelName: string): void {
@@ -84,4 +84,45 @@ export function getSummary(options: {
        FROM sessions s ${where}`
     )
     .get(...params) as SessionSummary;
+}
+
+export function getSummaryByModel(options: {
+  label?: string;
+  days?: number;
+}): ModelSummary[] {
+  const db = getDb();
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.label) {
+    conditions.push(
+      `s.session_id IN (SELECT sl.session_id FROM session_labels sl JOIN labels l ON sl.label_id = l.id WHERE l.name = ?)`
+    );
+    params.push(options.label);
+  }
+
+  if (options.days) {
+    conditions.push(`s.started_at >= datetime('now', ?)`);
+    params.push(`-${options.days} days`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  return db
+    .prepare(
+      `SELECT
+        sm.model,
+        COUNT(DISTINCT sm.session_id) as sessions,
+        COALESCE(SUM(sm.input_tokens), 0) as input_tokens,
+        COALESCE(SUM(sm.output_tokens), 0) as output_tokens,
+        COALESCE(SUM(sm.cache_creation_tokens), 0) as cache_creation_tokens,
+        COALESCE(SUM(sm.cache_read_tokens), 0) as cache_read_tokens,
+        COALESCE(SUM(sm.cost_usd), 0) as total_cost
+       FROM session_models sm
+       JOIN sessions s ON sm.session_id = s.session_id
+       ${where}
+       GROUP BY sm.model
+       ORDER BY total_cost DESC`
+    )
+    .all(...params) as ModelSummary[];
 }

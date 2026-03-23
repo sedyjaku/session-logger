@@ -1,4 +1,6 @@
 import { execFileSync } from "child_process";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { getDb, closeDb } from "./db.js";
 import type { Label } from "./types.js";
 
@@ -30,10 +32,25 @@ function formatDuration(ms: number): string {
   return `${hours}h ${minutes % 60}m`;
 }
 
-function parseOriginalCmd(): string | null {
-  const idx = process.argv.indexOf("--original");
+function parseFlag(flag: string): string | null {
+  const idx = process.argv.indexOf(flag);
   if (idx === -1 || idx + 1 >= process.argv.length) return null;
   return process.argv[idx + 1];
+}
+
+function hasFlag(flag: string): boolean {
+  return process.argv.includes(flag);
+}
+
+function parseOriginalCmd(): string | null {
+  return parseFlag("--original");
+}
+
+function getLabelCmd(): string {
+  const shortCmd = parseFlag("--label-cmd");
+  if (shortCmd) return shortCmd;
+  const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+  return `npx tsx ${projectRoot}/src/cli.ts`;
 }
 
 function runOriginalCmd(cmd: string, stdinData: string): string {
@@ -90,17 +107,25 @@ function main(): void {
           if (defaultStatus) parts.push(defaultStatus);
         }
 
+        let labelPart = "";
         if (input.session_id) {
           const labels = getLabels(input.session_id);
           if (labels.length > 0) {
-            parts.push(`[${labels.join(", ")}]`);
+            labelPart = `[${labels.join(", ")}]`;
           } else {
-            parts.push(`\x1b[31m! Session not labeled !\x1b[0m`);
+            const cmd = getLabelCmd();
+            const shortId = input.session_id.slice(0, 12);
+            labelPart = `\x1b[31m! Session not labeled !\x1b[0m → ${cmd} label ${shortId} "<your-label>"`;
           }
         }
 
-        if (parts.length > 0) {
-          process.stdout.write(parts.join(" | "));
+        const newRow = hasFlag("--new-row");
+        if (newRow) {
+          if (parts.length > 0) process.stdout.write(parts.join(" | "));
+          if (labelPart) process.stdout.write("\n" + labelPart);
+        } else {
+          if (labelPart) parts.push(labelPart);
+          if (parts.length > 0) process.stdout.write(parts.join(" | "));
         }
       } catch {
       } finally {

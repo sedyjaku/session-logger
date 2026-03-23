@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import Table from "cli-table3";
-import type { Session, LabelStats, SessionSummary } from "./types.js";
+import type { Session, LabelStats, SessionSummary, ModelBreakdown, MessageCost, MessageOutlier, ModelSummary } from "./types.js";
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -56,7 +56,7 @@ export function formatSessionList(sessions: Session[], labels: Record<string, st
   return table.toString();
 }
 
-export function formatSessionDetail(session: Session, labels: string[]): string {
+export function formatSessionDetail(session: Session, labels: string[], models?: ModelBreakdown[]): string {
   const labelStr = labels.join(", ") || "none";
 
   const lines = [
@@ -83,6 +83,10 @@ export function formatSessionDetail(session: Session, labels: string[]): string 
 
   if (session.transcript_path) {
     lines.push("", `  ${chalk.cyan("Transcript:")}    ${session.transcript_path}`);
+  }
+
+  if (models && models.length > 0) {
+    lines.push("", formatModelBreakdown(models));
   }
 
   return lines.join("\n");
@@ -127,4 +131,86 @@ export function formatSummary(summary: SessionSummary): string {
   ];
 
   return lines.join("\n");
+}
+
+export function formatModelBreakdown(models: ModelBreakdown[]): string {
+  if (models.length === 0) return chalk.yellow("No model breakdown available.");
+
+  const totalCost = models.reduce((sum, m) => sum + m.cost_usd, 0);
+
+  const table = new Table({
+    head: [
+      chalk.cyan("Model"),
+      chalk.cyan("Input"),
+      chalk.cyan("Output"),
+      chalk.cyan("Cache Create"),
+      chalk.cyan("Cache Read"),
+      chalk.cyan("Cost"),
+      chalk.cyan("% of Total"),
+    ],
+  });
+
+  for (const m of models) {
+    const pct = totalCost > 0 ? ((m.cost_usd / totalCost) * 100).toFixed(1) : "0.0";
+    table.push([
+      m.model,
+      formatTokens(m.input_tokens),
+      formatTokens(m.output_tokens),
+      formatTokens(m.cache_creation_tokens),
+      formatTokens(m.cache_read_tokens),
+      formatCost(m.cost_usd),
+      `${pct}%`,
+    ]);
+  }
+
+  return chalk.bold("Model Breakdown") + "\n" + table.toString();
+}
+
+export function formatMessageOutliers(outliers: (MessageCost | MessageOutlier)[], showSession: boolean): string {
+  if (outliers.length === 0) return chalk.yellow("No message outliers found.");
+
+  const head = showSession
+    ? [chalk.cyan("Msg ID"), chalk.cyan("Session"), chalk.cyan("Model"), chalk.cyan("Input"), chalk.cyan("Output"), chalk.cyan("Cost")]
+    : [chalk.cyan("Msg ID"), chalk.cyan("Model"), chalk.cyan("Input"), chalk.cyan("Output"), chalk.cyan("Cost")];
+
+  const table = new Table({ head });
+
+  for (const o of outliers) {
+    const row = showSession
+      ? [o.message_id.slice(0, 12), (o as MessageOutlier).session_id.slice(0, 12), o.model, formatTokens(o.input_tokens), formatTokens(o.output_tokens), formatCost(o.cost)]
+      : [o.message_id.slice(0, 12), o.model, formatTokens(o.input_tokens), formatTokens(o.output_tokens), formatCost(o.cost)];
+    table.push(row);
+  }
+
+  return chalk.bold("Costliest Messages") + "\n" + table.toString();
+}
+
+export function formatModelSummary(models: ModelSummary[]): string {
+  if (models.length === 0) return chalk.yellow("No model data available.");
+
+  const table = new Table({
+    head: [
+      chalk.cyan("Model"),
+      chalk.cyan("Sessions"),
+      chalk.cyan("Input"),
+      chalk.cyan("Output"),
+      chalk.cyan("Cache Create"),
+      chalk.cyan("Cache Read"),
+      chalk.cyan("Total Cost"),
+    ],
+  });
+
+  for (const m of models) {
+    table.push([
+      m.model,
+      String(m.sessions),
+      formatTokens(m.input_tokens),
+      formatTokens(m.output_tokens),
+      formatTokens(m.cache_creation_tokens),
+      formatTokens(m.cache_read_tokens),
+      formatCost(m.total_cost),
+    ]);
+  }
+
+  return chalk.bold("Cost by Model") + "\n" + table.toString();
 }

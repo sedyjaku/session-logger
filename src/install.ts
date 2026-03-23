@@ -1,4 +1,6 @@
 import { readFileSync, writeFileSync, copyFileSync, renameSync, existsSync, mkdirSync, unlinkSync, rmSync } from "fs";
+import { execFileSync } from "child_process";
+import { createInterface } from "readline";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { homedir } from "os";
@@ -48,7 +50,40 @@ function hasHook(
   );
 }
 
-export function installHooks(): { startCmd: string; endCmd: string; statusLineCmd: string } {
+function prompt(question: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+function tryNpmLink(): boolean {
+  try {
+    execFileSync("npm", ["link"], { cwd: PROJECT_ROOT, stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function installHooks(): Promise<{ startCmd: string; endCmd: string; statusLineCmd: string }> {
+  const rowChoice = await prompt("Put session label on:\n  (1) new row\n  (2) same row\nChoice [1]: ");
+  const newRow = rowChoice !== "2";
+
+  const linkChoice = await prompt('Run "npm link" to enable short "session-log" command? (y/n) [y]: ');
+  const doLink = linkChoice.toLowerCase() !== "n";
+
+  let linked = false;
+  if (doLink) {
+    linked = tryNpmLink();
+    if (!linked) {
+      process.stderr.write("Warning: npm link failed. Using full command path.\n");
+    }
+  }
+
   const settings = readSettings();
   const hooks = (settings.hooks || {}) as Record<string, unknown[]>;
 
@@ -69,18 +104,27 @@ export function installHooks(): { startCmd: string; endCmd: string; statusLineCm
   settings.hooks = hooks;
 
   const existing = settings.statusLine as { type?: string; command?: string } | undefined;
-  const alreadyInstalled = existing?.command?.includes(STATUSLINE_CMD);
+  const isOurs = existing?.command?.includes(STATUSLINE_CMD);
 
-  if (!alreadyInstalled) {
-    if (existing?.command) {
-      mkdirSync(DB_DIR, { recursive: true });
-      writeFileSync(ORIGINAL_STATUSLINE_PATH, JSON.stringify(existing));
-    }
-    settings.statusLine = {
-      type: "command",
-      command: `${STATUSLINE_CMD} ${existing?.command ? `--original ${JSON.stringify(existing.command)}` : ""}`.trim(),
-    };
+  let originalCmd: string | undefined;
+  if (!isOurs && existing?.command) {
+    mkdirSync(DB_DIR, { recursive: true });
+    writeFileSync(ORIGINAL_STATUSLINE_PATH, JSON.stringify(existing));
+    originalCmd = existing.command;
+  } else if (isOurs && existsSync(ORIGINAL_STATUSLINE_PATH)) {
+    const saved = JSON.parse(readFileSync(ORIGINAL_STATUSLINE_PATH, "utf-8"));
+    originalCmd = saved.command;
   }
+
+  const statusParts = [STATUSLINE_CMD];
+  if (originalCmd) statusParts.push(`--original ${JSON.stringify(originalCmd)}`);
+  if (newRow) statusParts.push("--new-row");
+  if (linked) statusParts.push("--label-cmd session-log");
+
+  settings.statusLine = {
+    type: "command",
+    command: statusParts.join(" "),
+  };
 
   writeSettings(settings);
 

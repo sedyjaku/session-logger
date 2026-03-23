@@ -1,20 +1,25 @@
 # Session Logger
 
-Track and audit Claude Code sessions with Jira ticket labels. Associate token usage and costs with specific Jira tickets for billing, reporting, and usage analysis.
+Track and audit Claude Code sessions with labels. Associate token usage and costs with specific tickets, projects, or any custom label for billing, reporting, and usage analysis.
 
 ## How It Works
 
 ```
-SessionStart hook ──→ creates session in DB, prompts for label via /dev/tty
-                       (only on source="startup", skips resume/clear/compact)
+SessionStart hook ──→ creates session record in DB
 
 SessionEnd hook ───→ parses transcript JSONL, sums tokens, computes cost,
                        updates session in DB
 
-CLI (session-log) ─→ queries DB: list, show, label, summary, doctor, etc.
+StatusLine cmd ────→ shows model, context %, cost, duration, and labels
+                       in Claude Code's status bar
+
+/session-tag skill ─→ tag the current session with a label from within
+                       Claude Code (e.g., /session-tag JIRA-123)
+
+CLI (session-log) ──→ queries DB: list, show, label, summary, doctor, etc.
 ```
 
-Session Logger integrates with Claude Code via lifecycle hooks. When you start a Claude Code session, the `SessionStart` hook creates a database record and optionally prompts you for labels (e.g., `JIRA-123`). When the session ends, the `SessionEnd` hook parses the transcript JSONL file, deduplicates streaming messages, calculates token usage and estimated costs, and updates the session record.
+Session Logger integrates with Claude Code via lifecycle hooks, a status line command, and a skill. When you start a Claude Code session, the `SessionStart` hook creates a database record. When the session ends, the `SessionEnd` hook parses the transcript JSONL file, deduplicates streaming messages, calculates token usage and estimated costs, and updates the session record. Labels are applied via the `/session-tag` skill or the `session-log label` CLI command.
 
 The `doctor` command can retroactively discover and import all historical sessions from `~/.claude/projects/` for sessions that predate installation or were interrupted.
 
@@ -38,9 +43,9 @@ npm install
 npx tsx src/cli.ts install
 ```
 
-This adds `SessionStart` and `SessionEnd` hooks to `~/.claude/settings.json`. Restart Claude Code for hooks to take effect.
+This adds `SessionStart` and `SessionEnd` hooks, the `StatusLine` command, and the `/session-tag` skill to your Claude Code configuration. Restart Claude Code for changes to take effect.
 
-To remove hooks:
+To remove all integrations:
 
 ```bash
 npx tsx src/cli.ts uninstall
@@ -161,33 +166,81 @@ Output:
 
 ### `install` / `uninstall`
 
-Add or remove SessionStart and SessionEnd hooks from `~/.claude/settings.json`.
+Register or remove all session-logger integrations from `~/.claude/settings.json`:
+
+- **SessionStart** and **SessionEnd** lifecycle hooks
+- **StatusLine** command (appends session labels to the status bar)
+- **`/session-tag` skill** (copied to `~/.claude/skills/session-tag/`)
 
 ```bash
 session-log install
 session-log uninstall
 ```
 
+If a `statusLine` command already exists in settings, `install` backs it up to `~/.claude/session-logger/original-statusline.json` and chains it. `uninstall` restores the original.
+
+## Status Line
+
+Session Logger installs a custom status line into Claude Code that displays key session metrics in the footer bar:
+
+```
+Claude Opus 4 | ctx: 42% | $1.37 | 12m 30s | [JIRA-123]
+```
+
+| Segment | Source |
+|---------|--------|
+| Model name | `model.display_name` from Claude Code |
+| Context usage | `context_window.used_percentage` |
+| Session cost | `cost.total_cost_usd` |
+| Duration | `cost.total_duration_ms` |
+| Labels | Looked up from the session-logger database |
+
+If the session has no labels, the label segment displays a red warning: `! Session not labeled !`
+
+### Chaining with an existing status line
+
+If you already have a `statusLine` command configured in `~/.claude/settings.json`, `install` backs up the original to `~/.claude/session-logger/original-statusline.json` and chains it via the `--original` flag. The original command's output appears first, followed by the session labels. On `uninstall`, the original status line configuration is restored automatically.
+
+## Session Tag Skill
+
+Session Logger installs a `/session-tag` skill into Claude Code. This lets you tag the current session with a label without leaving the conversation.
+
+Inside a Claude Code session, type:
+
+```
+/session-tag JIRA-123
+```
+
+To be prompted for a label interactively:
+
+```
+/session-tag
+```
+
+The skill calls `session-log label current <label>` under the hood. The status line updates automatically on the next assistant response.
+
+The skill is installed to `~/.claude/skills/session-tag/` during `install` and removed during `uninstall`.
+
 ## Session Labeling Workflow
 
-### At Session Start
+### Via the /session-tag Skill
 
-When Claude Code starts a new session (`source="startup"`), the hook prompts via `/dev/tty`:
+The recommended way to label a session is the `/session-tag` skill inside Claude Code:
 
 ```
-Session labels (comma-separated, Enter to skip): JIRA-123, sprint-42
+/session-tag JIRA-123
 ```
 
-Enter one or more labels separated by commas, or press Enter to skip. Labels are not prompted on `resume`, `clear`, or `compact` events.
+If no label argument is provided, Claude will ask you what label to assign. The status bar updates automatically on the next response.
 
-### Retroactive Labeling
+### Via CLI
 
 ```bash
 session-log label current JIRA-123      # label the most recent session
 session-log label 3135cbcc JIRA-456     # label by session ID prefix
 ```
 
-### Cost Reporting by Ticket
+### Cost Reporting by Label
 
 ```bash
 session-log summary --label JIRA-123
@@ -268,16 +321,20 @@ session-loger/
 ├── .gitignore
 ├── bin/
 │   └── session-log              # Shebang entry point
+├── skills/
+│   └── session-tag/
+│       └── skill.md             # /session-tag skill definition
 ├── src/
 │   ├── cli.ts                   # Commander program (delegates to services)
-│   ├── config.ts                # DB path, model pricing constants
+│   ├── config.ts                # DB path, model pricing, statusline backup path
 │   ├── types.ts                 # TypeScript interfaces
 │   ├── db.ts                    # SQLite connection, schema, WAL mode
 │   ├── format.ts                # CLI output formatting (tables, detail views)
-│   ├── install.ts               # Hook registration in settings.json
+│   ├── install.ts               # Hook, status line, and skill registration
+│   ├── statusline.ts            # StatusLine command (model, cost, duration, labels)
 │   ├── utils.ts                 # Shared utilities (readStdin, validateFields)
 │   ├── hooks/
-│   │   ├── session-start.ts     # SessionStart hook (DB insert + label prompt)
+│   │   ├── session-start.ts     # SessionStart hook (DB insert)
 │   │   └── session-end.ts       # SessionEnd hook (transcript parse + DB update)
 │   └── services/
 │       ├── session.service.ts   # Session CRUD, sync, query filtering
@@ -290,6 +347,8 @@ session-loger/
 ## Architecture
 
 - **Hooks** run as Claude Code lifecycle hooks via `npx tsx`. They read JSON from stdin, perform DB operations, and always exit 0 (errors are silently caught to never block the user's Claude session).
+- **StatusLine** runs as a Claude Code status line command. It reads session JSON from stdin, queries the DB for labels, and outputs a formatted status string. If a previous status line command existed, it chains to it via `--original`.
+- **Skills** are Claude Code skill definitions (Markdown files) installed to `~/.claude/skills/`. The `/session-tag` skill instructs Claude to run the CLI `label` command to tag the current session.
 - **Services** contain all business logic (session management, label CRUD, transcript parsing, cost calculation). No logic in the CLI layer.
 - **CLI** is a thin commander wrapper that delegates to services and formats output.
 - **Format** is a pure presentation layer — receives data and produces formatted strings. No service or database calls.
@@ -304,6 +363,10 @@ session-loger/
 | $0 cost for a model | Model prefix not in `MODEL_PRICING` — add it and re-sync |
 | DB locked errors | WAL mode + busy_timeout should handle this; check for zombie processes |
 | Corrupted settings.json | Fix the JSON manually, or delete and reconfigure Claude Code |
+| Status line not showing | Run `session-log install` and restart Claude Code |
+| Status line shows "! Session not labeled !" | Expected for unlabeled sessions — run `/session-tag JIRA-123` or `session-log label current <label>` |
+| Status line overwritten by another tool | Re-run `session-log install`; it chains with any pre-existing status line via `--original` |
+| /session-tag skill not found | Run `session-log install` to copy the skill to `~/.claude/skills/` |
 
 ## Tech Stack
 
