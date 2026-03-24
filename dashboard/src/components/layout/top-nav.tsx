@@ -6,9 +6,15 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Overview" },
-  { href: "/cost", label: "Cost Analysis" },
+  { href: "/budget", label: "Budget" },
+  { href: "/cost", label: "Cost" },
+  { href: "/waste", label: "Waste" },
+  { href: "/anomalies", label: "Anomalies" },
+  { href: "/tools", label: "Tools" },
+  { href: "/model-whatif", label: "Model What-If" },
+  { href: "/insights", label: "Insights" },
   { href: "/sessions", label: "Sessions" },
-  { href: "/labels", label: "Labels & Projects" },
+  { href: "/labels", label: "Labels" },
   { href: "/models", label: "Models" },
 ];
 

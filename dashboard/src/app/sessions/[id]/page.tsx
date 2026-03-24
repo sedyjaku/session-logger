@@ -18,6 +18,7 @@ import {
 } from "@/lib/format";
 import { cacheHitRatio } from "@/lib/derived-metrics";
 import { MessageTimelineChart } from "@/components/charts/message-timeline-chart";
+import { ExpandableMessagesTable } from "@/components/cards/expandable-messages-table";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +73,7 @@ export default async function SessionDetailPage({
 
   const labels = getSessionLabels(session.session_id);
   const modelBreakdown = getModelBreakdown(session.session_id);
-  const outliers = getMessageOutliers(session.session_id, 10);
+  const allMessages = getMessageOutliers(session.session_id, 9999);
   const timeline = getSessionMessageTimeline(session.session_id);
   const toolUsage = getSessionToolUsage(session.session_id);
 
@@ -282,56 +283,7 @@ export default async function SessionDetailPage({
         <MessageTimelineChart data={timelineData} />
       </div>
 
-      {outliers.length > 0 && (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-5">
-          <h3 className="mb-4 text-sm font-semibold">Costliest Messages</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[var(--muted-foreground)]">
-                  <th className="pb-3 pr-4 font-medium">#</th>
-                  <th className="pb-3 pr-4 font-medium">Model</th>
-                  <th className="pb-3 pr-4 text-right font-medium">
-                    Input Tokens
-                  </th>
-                  <th className="pb-3 pr-4 text-right font-medium">
-                    Output Tokens
-                  </th>
-                  <th className="pb-3 pr-4 text-right font-medium">
-                    Cache Read
-                  </th>
-                  <th className="pb-3 text-right font-medium">Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outliers.map((m, idx) => (
-                  <tr
-                    key={m.message_id}
-                    className="border-b border-[var(--border)] last:border-0"
-                  >
-                    <td className="py-3 pr-4 text-[var(--muted-foreground)]">
-                      {idx + 1}
-                    </td>
-                    <td className="py-3 pr-4">{m.model}</td>
-                    <td className="py-3 pr-4 text-right">
-                      {formatTokens(m.input_tokens)}
-                    </td>
-                    <td className="py-3 pr-4 text-right">
-                      {formatTokens(m.output_tokens)}
-                    </td>
-                    <td className="py-3 pr-4 text-right">
-                      {formatTokens(m.cache_read_tokens)}
-                    </td>
-                    <td className="py-3 text-right font-medium">
-                      {formatCost(m.cost)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <ExpandableMessagesTable messages={allMessages} />
 
       {toolUsage.length > 0 && (
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-5">

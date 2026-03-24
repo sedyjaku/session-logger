@@ -90,6 +90,7 @@ export default async function OverviewPage({
   return (
     <Suspense>
       <div className="space-y-6">
+        <p className="text-sm text-[var(--muted-foreground)]">High-level overview of your Claude Code usage — total spend, session volume, cache efficiency, and cost trends across models and labels.</p>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
           <KpiCard
             title="Total Spend"

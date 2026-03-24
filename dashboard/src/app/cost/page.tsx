@@ -90,6 +90,7 @@ export default async function CostPage({
   return (
     <Suspense>
       <div className="space-y-6">
+        <p className="text-sm text-[var(--muted-foreground)]">Detailed cost breakdown by model, label, and project. Includes token-level analysis and identifies the costliest individual messages.</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <KpiCard
             title="Total Cost"
