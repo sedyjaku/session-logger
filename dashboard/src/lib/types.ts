@@ -108,3 +108,72 @@ export interface DashboardFilters {
   project?: string;
   model?: string;
 }
+
+export interface LabelDetailedStats {
+  name: string;
+  session_count: number;
+  total_cost: number;
+  avg_cost: number;
+  median_cost: number;
+  min_cost: number;
+  max_cost: number;
+  total_tokens: number;
+  total_duration: number;
+  last_active: string;
+  recent_sessions: number;
+  older_sessions: number;
+}
+
+export interface ProjectDetailedStats {
+  project_path: string;
+  session_count: number;
+  total_cost: number;
+  avg_cost: number;
+  median_cost: number;
+  min_cost: number;
+  max_cost: number;
+  total_tokens: number;
+  total_duration: number;
+  last_active: string;
+  recent_sessions: number;
+  older_sessions: number;
+}
+
+export interface LabelDailyCost {
+  name: string;
+  date: string;
+  cost: number;
+}
+
+export interface LabelOutlierSession {
+  session_id: string;
+  label_name: string;
+  cost: number;
+  label_avg: number;
+  started_at: string;
+  project_path: string;
+}
+
+export interface ProjectOutlierSession {
+  session_id: string;
+  project_path: string;
+  cost: number;
+  project_avg: number;
+  started_at: string;
+}
+
+export interface ExpensiveLabel {
+  name: string;
+  avg_cost: number;
+  global_avg: number;
+  ratio: number;
+  session_count: number;
+}
+
+export interface ExpensiveProject {
+  project_path: string;
+  avg_cost: number;
+  global_avg: number;
+  ratio: number;
+  session_count: number;
+}
