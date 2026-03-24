@@ -57,3 +57,20 @@ export function shortProjectPath(path: string): string {
   const parts = path.split("/");
   return parts[parts.length - 1] || path;
 }
+
+export function formatRelativeDate(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diffMs = now - then;
+  const minutes = Math.floor(diffMs / 60_000);
+  const hours = Math.floor(diffMs / 3_600_000);
+  const days = Math.floor(diffMs / 86_400_000);
+  const weeks = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+
+  if (minutes < 60) return `${Math.max(minutes, 0)}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${weeks}w ago`;
+  return `${months}mo ago`;
+}
