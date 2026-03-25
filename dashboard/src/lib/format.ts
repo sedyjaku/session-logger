@@ -59,8 +59,10 @@ export function shortProjectPath(path: string): string {
 }
 
 export function formatRelativeDate(iso: string): string {
+  if (!iso) return "-";
   const now = Date.now();
   const then = new Date(iso).getTime();
+  if (isNaN(then)) return "-";
   const diffMs = now - then;
   const minutes = Math.floor(diffMs / 60_000);
   const hours = Math.floor(diffMs / 3_600_000);

@@ -40,13 +40,12 @@ function buildFilter(filters: DashboardFilters, alias = "s") {
   return { where, params };
 }
 
-function computeMedian(sortedValues: number[]): number {
-  if (sortedValues.length === 0) return 0;
-  const mid = Math.floor(sortedValues.length / 2);
-  if (sortedValues.length % 2 === 0) {
-    return (sortedValues[mid - 1] + sortedValues[mid]) / 2;
-  }
-  return sortedValues[mid];
+function computeMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted[mid];
 }
 
 export function getLabelDetailedStats(filters: DashboardFilters): LabelDetailedStats[] {
@@ -325,6 +324,43 @@ export function getExpensiveLabels(filters: DashboardFilters): ExpensiveLabel[] 
       AND avg_cost > 2 * (SELECT avg_cost FROM global_avg)
     ORDER BY ratio DESC`
   ).all(...params, ...params) as ExpensiveLabel[];
+}
+
+export interface LabelKpis {
+  avgCost: number;
+  medianCost: number;
+  maxCost: number;
+  minCost: number;
+}
+
+export function getLabelKpis(stats: (LabelDetailedStats | ProjectDetailedStats)[]): LabelKpis {
+  if (stats.length === 0) return { avgCost: 0, medianCost: 0, maxCost: 0, minCost: 0 };
+  const avgValues = stats.map((s) => s.avg_cost);
+  return {
+    avgCost: avgValues.reduce((a, b) => a + b, 0) / avgValues.length,
+    medianCost: computeMedian(avgValues),
+    maxCost: stats.reduce((m, s) => Math.max(m, s.max_cost), 0),
+    minCost: stats.reduce((m, s) => Math.min(m, s.min_cost), Infinity),
+  };
+}
+
+export interface SparklineEntry {
+  name: string;
+  points: { date: string; cost: number }[];
+  total: number;
+}
+
+export function buildSparklineData(dailyCost: LabelDailyCost[], limit = 6): SparklineEntry[] {
+  const map = new Map<string, { date: string; cost: number }[]>();
+  for (const row of dailyCost) {
+    if (!map.has(row.name)) map.set(row.name, []);
+    map.get(row.name)!.push({ date: row.date, cost: row.cost });
+  }
+  const entries: SparklineEntry[] = [];
+  for (const [name, points] of map) {
+    entries.push({ name, points, total: points.reduce((sum, p) => sum + p.cost, 0) });
+  }
+  return entries.slice(0, limit);
 }
 
 export function getExpensiveProjects(filters: DashboardFilters): ExpensiveProject[] {
