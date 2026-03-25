@@ -37,6 +37,15 @@ import {
 import { installHooks, uninstallHooks } from "./install.js";
 import { closeDb } from "./db.js";
 
+function formatSeconds(seconds: number | null): string {
+  if (seconds === null || seconds === 0) return "-";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
 function withErrorHandling(fn: (...args: unknown[]) => void) {
   return (...args: unknown[]) => {
     try {
@@ -211,11 +220,17 @@ program
           process.exit(1);
         }
         if (opts.dryRun) {
+          const totalDuration = payload.sessions.reduce((sum, s) => sum + (s.duration_seconds ?? 0), 0);
+          const totalActive = payload.sessions.reduce((sum, s) => sum + (s.active_seconds ?? 0), 0);
           console.log(chalk.cyan(`Would sync ${ticketId}:`));
           console.log(`  Sessions: ${payload.session_count}`);
           console.log(`  Total cost: $${payload.total_cost_usd.toFixed(2)}`);
+          console.log(`  Duration: ${formatSeconds(totalDuration)} (${formatSeconds(totalActive)} active)`);
+          console.log("");
           for (const s of payload.sessions) {
-            console.log(`    ${s.date} | ${s.model ?? "unknown"} | $${s.cost_usd.toFixed(2)}`);
+            const dur = formatSeconds(s.duration_seconds);
+            const active = s.active_seconds ? ` (${formatSeconds(s.active_seconds)} active)` : "";
+            console.log(`    ${s.date} | ${dur}${active} | ${s.model ?? "unknown"} | in:${s.input_tokens} out:${s.output_tokens} | $${s.cost_usd.toFixed(2)}`);
           }
           closeDb();
           return;
@@ -240,7 +255,9 @@ program
             const payload = buildSyncPayload(t);
             const changed = hasChangedSinceLastSync(t);
             const status = changed ? chalk.green("changed") : chalk.gray("unchanged");
-            console.log(`  ${t}: ${payload.session_count} sessions, $${payload.total_cost_usd.toFixed(2)} [${status}]`);
+            const dur = formatSeconds(payload.sessions.reduce((sum, s) => sum + (s.duration_seconds ?? 0), 0));
+            const active = formatSeconds(payload.sessions.reduce((sum, s) => sum + (s.active_seconds ?? 0), 0));
+            console.log(`  ${t}: ${payload.session_count} sessions, ${dur} (${active} active), $${payload.total_cost_usd.toFixed(2)} [${status}]`);
           }
           closeDb();
           return;
