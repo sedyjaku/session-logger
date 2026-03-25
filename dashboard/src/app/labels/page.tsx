@@ -11,7 +11,7 @@ import {
   getLabelKpis,
   buildSparklineData,
 } from "@/lib/queries-labels";
-import { formatCost, formatTokens, formatDuration, formatRelativeDate, shortProjectPath } from "@/lib/format";
+import { formatCost, formatTokens, formatDuration, formatActiveTime, formatRelativeDate, shortProjectPath } from "@/lib/format";
 import type { DashboardFilters } from "@/lib/types";
 import { ViewToggle } from "@/components/filters/view-toggle";
 import { KpiCard } from "@/components/cards/kpi-card";
@@ -252,7 +252,14 @@ export default async function LabelsPage({
                         <td className="py-3 pr-4 text-right">{formatCost(row.min_cost)}</td>
                         <td className="py-3 pr-4 text-right">{formatCost(row.max_cost)}</td>
                         <td className="py-3 pr-4 text-right">{formatTokens(row.total_tokens)}</td>
-                        <td className="py-3 pr-4 text-right">{formatDuration(row.total_duration)}</td>
+                        <td className="py-3 pr-4 text-right">
+                          <span>{formatDuration(row.total_duration)}</span>
+                          {row.total_active_seconds ? (
+                            <span className="ml-1 text-xs text-[var(--muted-foreground)]">
+                              / {formatActiveTime(row.total_active_seconds)}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="py-3 text-right text-[var(--muted-foreground)]">
                           {formatRelativeDate(row.last_active)}
                         </td>

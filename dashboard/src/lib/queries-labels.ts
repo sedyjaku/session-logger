@@ -61,6 +61,7 @@ export function getLabelDetailedStats(filters: DashboardFilters): LabelDetailedS
       COALESCE(MAX(s.estimated_cost_usd), 0) as max_cost,
       COALESCE(SUM(s.input_tokens + s.output_tokens), 0) as total_tokens,
       COALESCE(SUM(s.duration_seconds), 0) as total_duration,
+      COALESCE(SUM((SELECT SUM(se.duration_ms) / 1000.0 FROM session_events se WHERE se.session_id = s.session_id AND se.type = 'turn_duration')), 0) as total_active_seconds,
       MAX(s.started_at) as last_active
      FROM labels l
      JOIN session_labels sl ON l.id = sl.label_id
@@ -135,6 +136,7 @@ export function getProjectDetailedStats(filters: DashboardFilters): ProjectDetai
       COALESCE(MAX(s.estimated_cost_usd), 0) as max_cost,
       COALESCE(SUM(s.input_tokens + s.output_tokens), 0) as total_tokens,
       COALESCE(SUM(s.duration_seconds), 0) as total_duration,
+      COALESCE(SUM((SELECT SUM(se.duration_ms) / 1000.0 FROM session_events se WHERE se.session_id = s.session_id AND se.type = 'turn_duration')), 0) as total_active_seconds,
       MAX(s.started_at) as last_active
      FROM sessions s
      ${where}

@@ -40,6 +40,7 @@ export interface SessionAnomaly {
   message_count: number;
   tool_use_count: number;
   duration_seconds: number;
+  active_seconds: number;
   end_reason: string | null;
   mean_cost: number;
   z_score: number;
@@ -89,7 +90,9 @@ export function getSessionAnomalies(filters: DashboardFilters): SessionAnomaly[]
       HAVING COUNT(*) >= 3
     )
     SELECT s.session_id, s.project_path, s.model, s.estimated_cost_usd, s.started_at,
-      s.message_count, s.tool_use_count, s.duration_seconds, s.end_reason,
+      s.message_count, s.tool_use_count, s.duration_seconds,
+      COALESCE((SELECT SUM(se.duration_ms) / 1000.0 FROM session_events se WHERE se.session_id = s.session_id AND se.type = 'turn_duration'), 0) as active_seconds,
+      s.end_reason,
       st.mean_cost,
       CASE WHEN st.variance > 0 THEN (s.estimated_cost_usd - st.mean_cost) / SQRT(st.variance) ELSE 0 END as z_score
     FROM sessions s

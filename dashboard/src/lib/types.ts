@@ -8,6 +8,7 @@ export interface Session {
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
+  active_seconds: number | null;
   input_tokens: number;
   output_tokens: number;
   cache_creation_tokens: number;
@@ -119,6 +120,7 @@ export interface LabelDetailedStats {
   max_cost: number;
   total_tokens: number;
   total_duration: number;
+  total_active_seconds: number;
   last_active: string;
   recent_sessions: number;
   older_sessions: number;
@@ -134,6 +136,7 @@ export interface ProjectDetailedStats {
   max_cost: number;
   total_tokens: number;
   total_duration: number;
+  total_active_seconds: number;
   last_active: string;
   recent_sessions: number;
   older_sessions: number;

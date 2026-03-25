@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listSessions, getSessionCount, getSummary } from "@/lib/queries";
-import { formatCost, formatDate, formatDuration, shortSessionId } from "@/lib/format";
+import { formatCost, formatDate, formatDuration, formatActiveTime, shortSessionId } from "@/lib/format";
 import type { DashboardFilters } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -134,6 +134,12 @@ export default async function SessionsPage({
   );
   const avgDuration =
     sessions.length > 0 ? Math.round(totalDuration / sessions.length) : 0;
+  const totalActive = sessions.reduce(
+    (sum, s) => sum + (s.active_seconds || 0),
+    0
+  );
+  const avgActive =
+    sessions.length > 0 ? Math.round(totalActive / sessions.length) : 0;
 
   return (
     <div className="space-y-6">
@@ -159,6 +165,11 @@ export default async function SessionsPage({
           <p className="mt-2 text-3xl font-bold tracking-tight">
             {formatDuration(totalDuration)}
           </p>
+          {totalActive > 0 && (
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {formatActiveTime(totalActive)} active
+            </p>
+          )}
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-5">
           <p className="text-sm font-medium text-[var(--muted-foreground)]">
@@ -167,6 +178,11 @@ export default async function SessionsPage({
           <p className="mt-2 text-3xl font-bold tracking-tight">
             {formatDuration(avgDuration)}
           </p>
+          {avgActive > 0 && (
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {formatActiveTime(avgActive)} active
+            </p>
+          )}
         </div>
       </div>
 
@@ -210,7 +226,12 @@ export default async function SessionsPage({
                       {formatDate(s.started_at)}
                     </td>
                     <td className="py-3 pr-4 text-sm">
-                      {formatDuration(s.duration_seconds)}
+                      <span>{formatDuration(s.duration_seconds)}</span>
+                      {s.active_seconds ? (
+                        <span className="ml-1 text-xs text-[var(--muted-foreground)]">
+                          / {formatActiveTime(s.active_seconds)}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="py-3 pr-4 text-sm">
                       {shortModel(s.model)}

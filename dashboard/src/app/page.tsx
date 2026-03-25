@@ -10,7 +10,7 @@ import {
   getCostByLabel,
   listSessions,
 } from "@/lib/queries";
-import { formatCost, formatPercent, formatDelta, formatTokens, formatDate, formatDuration, shortSessionId, shortProjectPath } from "@/lib/format";
+import { formatCost, formatPercent, formatDelta, formatTokens, formatDate, formatDuration, formatActiveTime, shortSessionId, shortProjectPath } from "@/lib/format";
 import { cacheHitRatio, thinkingRatio } from "@/lib/derived-metrics";
 import type { DashboardFilters } from "@/lib/types";
 
@@ -177,7 +177,14 @@ export default async function OverviewPage({
                         </td>
                         <td className="py-2 pr-4">{shortProjectPath(s.project_path)}</td>
                         <td className="py-2 pr-4">{s.model?.replace("claude-", "").replace(/-\d+.*/, "") || "?"}</td>
-                        <td className="py-2 pr-4">{formatDuration(s.duration_seconds)}</td>
+                        <td className="py-2 pr-4">
+                          <span>{formatDuration(s.duration_seconds)}</span>
+                          {s.active_seconds ? (
+                            <span className="ml-1 text-xs text-[var(--muted-foreground)]">
+                              / {formatActiveTime(s.active_seconds)}
+                            </span>
+                          ) : null}
+                        </td>
                         <td className="py-2 text-right font-medium">{formatCost(s.estimated_cost_usd)}</td>
                       </tr>
                     ))}

@@ -1,10 +1,25 @@
+export interface SessionModelUsage {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  cost_usd: number;
+}
+
 export interface JiraSyncSessionDetail {
   session_id: string;
   date: string;
   duration_seconds: number | null;
+  active_seconds: number | null;
   model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
   cost_usd: number;
   project_path: string;
+  models: SessionModelUsage[];
 }
 
 export interface JiraSyncRequest {

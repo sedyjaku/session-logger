@@ -12,6 +12,7 @@ import {
   formatPercent,
   formatDate,
   formatDuration,
+  formatActiveTime,
   formatTokens,
   shortSessionId,
   shortProjectPath,
@@ -138,7 +139,14 @@ export default async function AnomaliesPage({
                         {s.z_score.toFixed(1)}
                       </td>
                       <td className="py-2 pr-4 text-right">{s.message_count}</td>
-                      <td className="py-2 pr-4 text-right">{formatDuration(s.duration_seconds)}</td>
+                      <td className="py-2 pr-4 text-right">
+                        <span>{formatDuration(s.duration_seconds)}</span>
+                        {s.active_seconds ? (
+                          <span className="ml-1 text-xs text-[var(--muted-foreground)]">
+                            / {formatActiveTime(s.active_seconds)}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="py-2">{s.end_reason || "-"}</td>
                     </tr>
                   ))}

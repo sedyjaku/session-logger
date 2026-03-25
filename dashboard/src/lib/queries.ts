@@ -215,6 +215,7 @@ export function listSessions(filters: DashboardFilters & { limit?: number; offse
 
   return db.prepare(
     `SELECT s.*,
+      COALESCE((SELECT SUM(se.duration_ms) / 1000.0 FROM session_events se WHERE se.session_id = s.session_id AND se.type = 'turn_duration'), 0) as active_seconds,
       COALESCE(GROUP_CONCAT(l.name, ', '), '') as labels
      FROM sessions s
      LEFT JOIN session_labels sl ON s.session_id = sl.session_id
@@ -249,7 +250,9 @@ export function getSessionCount(filters: DashboardFilters & { search?: string })
 export function getSession(sessionId: string): Session | undefined {
   const db = getDb();
   return db.prepare(
-    "SELECT * FROM sessions WHERE session_id = ? OR session_id LIKE ?"
+    `SELECT s.*,
+      COALESCE((SELECT SUM(se.duration_ms) / 1000.0 FROM session_events se WHERE se.session_id = s.session_id AND se.type = 'turn_duration'), 0) as active_seconds
+     FROM sessions s WHERE s.session_id = ? OR s.session_id LIKE ?`
   ).get(sessionId, `${sessionId}%`) as Session | undefined;
 }
 

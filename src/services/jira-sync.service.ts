@@ -5,6 +5,7 @@ import type {
   JiraSyncRequest,
   JiraSyncResponse,
   JiraSyncRecord,
+  SessionModelUsage,
 } from "../jira-sync.types.js";
 
 const TICKET_PATTERN = /^[A-Z]+-\d+$/;
@@ -19,15 +20,36 @@ export function getJiraTicketLabels(): string[] {
     .filter((name) => TICKET_PATTERN.test(name));
 }
 
+interface SessionRow {
+  session_id: string;
+  date: string;
+  duration_seconds: number | null;
+  active_seconds: number | null;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  cost_usd: number;
+  project_path: string;
+}
+
 export function getSessionsForTicket(ticketId: string): JiraSyncSessionDetail[] {
   const db = getDb();
-  return db
+  const rows = db
     .prepare(
       `SELECT
         s.session_id,
         DATE(s.started_at) as date,
         s.duration_seconds,
+        (SELECT CAST(SUM(se.duration_ms) / 1000 AS INTEGER)
+         FROM session_events se
+         WHERE se.session_id = s.session_id AND se.type = 'turn_duration') as active_seconds,
         s.model,
+        s.input_tokens,
+        s.output_tokens,
+        s.cache_creation_tokens,
+        s.cache_read_tokens,
         s.estimated_cost_usd as cost_usd,
         s.project_path
        FROM sessions s
@@ -36,7 +58,17 @@ export function getSessionsForTicket(ticketId: string): JiraSyncSessionDetail[] 
        WHERE l.name = ?
        ORDER BY s.started_at ASC`
     )
-    .all(ticketId) as JiraSyncSessionDetail[];
+    .all(ticketId) as SessionRow[];
+
+  const getModels = db.prepare(
+    `SELECT model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cost_usd
+     FROM session_models WHERE session_id = ?`
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    models: getModels.all(row.session_id) as SessionModelUsage[],
+  }));
 }
 
 export function getSyncRecord(ticketId: string): JiraSyncRecord | undefined {

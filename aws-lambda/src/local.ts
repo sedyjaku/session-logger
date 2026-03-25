@@ -17,7 +17,7 @@ const server = createServer(async (req, res) => {
 
   const result = await handler(event, {} as Context, () => {});
 
-  if (!result || typeof result === "void") {
+  if (!result) {
     res.writeHead(500);
     res.end("No response");
     return;

@@ -11,6 +11,7 @@ import {
   formatCost,
   formatDate,
   formatDuration,
+  formatActiveTime,
   formatTokens,
   shortSessionId,
   shortProjectPath,
@@ -155,6 +156,11 @@ export default async function SessionDetailPage({
             <p className="mt-1 text-sm font-medium">
               {formatDuration(session.duration_seconds)}
             </p>
+            {session.active_seconds ? (
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {formatActiveTime(session.active_seconds)} active
+              </p>
+            ) : null}
           </div>
           <div>
             <p className="text-xs font-medium text-[var(--muted-foreground)]">
