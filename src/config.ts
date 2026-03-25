@@ -7,6 +7,8 @@ export const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 export const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 export const ORIGINAL_STATUSLINE_PATH = join(DB_DIR, "original-statusline.json");
 
+export const JIRA_SYNC_ENDPOINT = process.env.JIRA_SYNC_ENDPOINT || "";
+
 export const MODEL_PRICING: Record<
   string,
   {

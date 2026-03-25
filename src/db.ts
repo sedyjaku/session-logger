@@ -121,6 +121,14 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_session_events_session_id ON session_events(session_id);
     CREATE INDEX IF NOT EXISTS idx_session_events_type ON session_events(type);
     CREATE INDEX IF NOT EXISTS idx_session_events_timestamp ON session_events(timestamp);
+
+    CREATE TABLE IF NOT EXISTS jira_syncs (
+      ticket_id TEXT PRIMARY KEY,
+      comment_id TEXT,
+      last_synced_at TEXT NOT NULL,
+      total_cost_usd REAL DEFAULT 0,
+      session_count INTEGER DEFAULT 0
+    );
   `);
 }
 

@@ -20,6 +20,13 @@ import {
 } from "./services/label.service.js";
 import { runDoctor } from "./services/doctor.service.js";
 import {
+  syncTicket,
+  syncAllTickets,
+  getJiraTicketLabels,
+  buildSyncPayload,
+  hasChangedSinceLastSync,
+} from "./services/jira-sync.service.js";
+import {
   formatSessionList,
   formatSessionDetail,
   formatLabelList,
@@ -188,6 +195,76 @@ program
     }
     closeDb();
   }));
+
+program
+  .command("jira-sync [ticket-id]")
+  .description("Sync session costs to Jira via Lambda proxy")
+  .option("--dry-run", "Show what would be synced without calling Lambda")
+  .option("--force", "Sync even if nothing changed since last sync")
+  .action(async (ticketId: string | undefined, opts: { dryRun?: boolean; force?: boolean }) => {
+    try {
+      if (ticketId) {
+        const payload = buildSyncPayload(ticketId);
+        if (payload.sessions.length === 0) {
+          console.log(chalk.red(`No sessions found for ticket ${ticketId}`));
+          closeDb();
+          process.exit(1);
+        }
+        if (opts.dryRun) {
+          console.log(chalk.cyan(`Would sync ${ticketId}:`));
+          console.log(`  Sessions: ${payload.session_count}`);
+          console.log(`  Total cost: $${payload.total_cost_usd.toFixed(2)}`);
+          for (const s of payload.sessions) {
+            console.log(`    ${s.date} | ${s.model ?? "unknown"} | $${s.cost_usd.toFixed(2)}`);
+          }
+          closeDb();
+          return;
+        }
+        if (!opts.force && !hasChangedSinceLastSync(ticketId)) {
+          console.log(chalk.yellow(`${ticketId}: no changes since last sync. Use --force to sync anyway.`));
+          closeDb();
+          return;
+        }
+        const result = await syncTicket(ticketId);
+        console.log(chalk.green(`${ticketId}: synced (comment ${result.comment_id})`));
+      } else {
+        const tickets = getJiraTicketLabels();
+        if (tickets.length === 0) {
+          console.log(chalk.yellow("No Jira ticket labels found. Labels must match pattern PROJ-123."));
+          closeDb();
+          return;
+        }
+        if (opts.dryRun) {
+          console.log(chalk.cyan(`Found ${tickets.length} ticket label(s):\n`));
+          for (const t of tickets) {
+            const payload = buildSyncPayload(t);
+            const changed = hasChangedSinceLastSync(t);
+            const status = changed ? chalk.green("changed") : chalk.gray("unchanged");
+            console.log(`  ${t}: ${payload.session_count} sessions, $${payload.total_cost_usd.toFixed(2)} [${status}]`);
+          }
+          closeDb();
+          return;
+        }
+        const result = await syncAllTickets(opts.force ?? false);
+        for (const t of result.synced) {
+          console.log(chalk.green(`  ${t}: synced`));
+        }
+        for (const t of result.skipped) {
+          console.log(chalk.gray(`  ${t}: unchanged, skipped`));
+        }
+        for (const e of result.errors) {
+          console.log(chalk.red(`  ${e.ticket}: ${e.error}`));
+        }
+        console.log("");
+        console.log(`Synced: ${result.synced.length}, Skipped: ${result.skipped.length}, Errors: ${result.errors.length}`);
+      }
+      closeDb();
+    } catch (err) {
+      process.stderr.write(chalk.red((err as Error).message) + "\n");
+      closeDb();
+      process.exit(1);
+    }
+  });
 
 program
   .command("doctor")

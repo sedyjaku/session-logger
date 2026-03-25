@@ -164,6 +164,33 @@ Output:
 - **Existing sessions synced**: sessions already in DB, updated with latest data
 - **New sessions created**: sessions discovered for the first time
 
+### `jira-sync [ticket-id]`
+
+Sync session costs to Jira via a Lambda proxy. Sessions labeled with Jira ticket IDs (matching pattern `PROJ-123`) have their costs aggregated and posted as a comment on the corresponding Jira ticket. Multiple sessions with the same ticket label are combined into a single comment with a detailed table.
+
+The comment is updated in-place on re-sync — if you log $10 and then $5 more, the Jira comment shows $15 total.
+
+```bash
+session-log jira-sync                # sync all detected ticket labels
+session-log jira-sync ENG-123        # sync a specific ticket
+session-log jira-sync --dry-run      # preview what would be synced
+session-log jira-sync --force        # sync even if nothing changed
+```
+
+Requires the `JIRA_SYNC_ENDPOINT` environment variable set to the Lambda Function URL:
+
+```bash
+export JIRA_SYNC_ENDPOINT=https://your-lambda-url.amazonaws.com
+```
+
+The Jira comment renders as:
+
+| Date | Duration | Model | Project | Cost |
+|------|----------|-------|---------|------|
+| 2026-03-24 | 45m | opus | my-project | $10.00 |
+| 2026-03-25 | 12m | sonnet | my-project | $5.00 |
+| **Total** | **57m** | | **2 sessions** | **$15.00** |
+
 ### `install` / `uninstall`
 
 Register or remove all session-logger integrations from `~/.claude/settings.json`:
@@ -312,6 +339,16 @@ SQLite database at `~/.claude/session-logger/data.db` (WAL mode, busy_timeout=30
 | label_id | INTEGER FK → labels.id |
 | PRIMARY KEY | (session_id, label_id) |
 
+**jira_syncs** (sync state per ticket)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| ticket_id | TEXT PK | Jira ticket key (e.g., ENG-123) |
+| comment_id | TEXT | Jira comment ID for in-place updates |
+| last_synced_at | TEXT | ISO-8601 timestamp |
+| total_cost_usd | REAL | Snapshot of total cost at last sync |
+| session_count | INTEGER | Snapshot of session count at last sync |
+
 ## Project Structure
 
 ```
@@ -328,6 +365,7 @@ session-loger/
 │   ├── cli.ts                   # Commander program (delegates to services)
 │   ├── config.ts                # DB path, model pricing, statusline backup path
 │   ├── types.ts                 # TypeScript interfaces
+│   ├── jira-sync.types.ts       # Jira sync request/response types
 │   ├── db.ts                    # SQLite connection, schema, WAL mode
 │   ├── format.ts                # CLI output formatting (tables, detail views)
 │   ├── install.ts               # Hook, status line, and skill registration
@@ -341,8 +379,66 @@ session-loger/
 │       ├── label.service.ts     # Label CRUD, aggregate stats, summaries
 │       ├── transcript.service.ts# JSONL parsing, message dedup, token summing
 │       ├── cost.service.ts      # Token → USD calculation
-│       └── doctor.service.ts    # Transcript discovery and bulk sync
+│       ├── doctor.service.ts    # Transcript discovery and bulk sync
+│       └── jira-sync.service.ts # Jira sync business logic
+├── aws-lambda/                  # AWS Lambda — Jira proxy
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── src/
+│       ├── handler.ts           # Lambda entry point
+│       ├── jira-client.ts       # Jira REST API v3 calls
+│       ├── adf-builder.ts       # Atlassian Document Format table builder
+│       ├── local.ts             # Local dev server (wraps handler with http)
+│       └── types.ts             # Shared types (duplicated for build isolation)
 ```
+
+## Jira Sync Lambda
+
+The `aws-lambda/` directory contains an AWS Lambda that acts as a proxy between the session-logger CLI and Jira. Users don't need individual Jira API credentials — the Lambda holds a shared token and is secured by VPN.
+
+### How It Works
+
+```
+session-log jira-sync ──→ aggregates sessions by ticket label
+                          ──→ POST to Lambda with ticket ID + session table
+                                ──→ Lambda creates/updates Jira comment via REST API v3
+                                ──→ returns comment ID
+                          ──→ stores comment ID locally for future in-place updates
+```
+
+### Lambda Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `JIRA_BASE_URL` | Jira instance URL (e.g., `https://yourcompany.atlassian.net`) |
+| `JIRA_EMAIL` | Service account email for API auth |
+| `JIRA_API_TOKEN` | Jira API token for the service account |
+
+### Local Development
+
+```bash
+cd aws-lambda
+npm install
+JIRA_BASE_URL=https://yourcompany.atlassian.net \
+JIRA_EMAIL=service@company.com \
+JIRA_API_TOKEN=your-token \
+npm run local
+```
+
+This starts the Lambda handler on `http://localhost:3001`. Point the CLI at it:
+
+```bash
+JIRA_SYNC_ENDPOINT=http://localhost:3001 session-log jira-sync --dry-run
+```
+
+### Deployment
+
+```bash
+cd aws-lambda
+npm run package
+```
+
+This compiles TypeScript and creates `function.zip` ready for AWS Lambda upload. Configure the Lambda with a Function URL and the environment variables above.
 
 ## Architecture
 

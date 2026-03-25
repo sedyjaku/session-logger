@@ -1,0 +1,14 @@
+{
+  "name": "session-logger-jira-lambda",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "local": "tsc && node dist/local.js",
+    "package": "tsc && cd dist && zip -r ../function.zip ."
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "typescript": "^5.7.0"
+  }
+}
