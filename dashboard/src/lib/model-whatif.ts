@@ -1,10 +1,5 @@
 import type { SessionModelData } from "./queries-model-whatif";
-
-const MODEL_PRICING: Record<string, { input: number; output: number; cacheCreation: number; cacheRead: number }> = {
-  "claude-opus-4": { input: 15, output: 75, cacheCreation: 18.75, cacheRead: 1.5 },
-  "claude-sonnet-4": { input: 3, output: 15, cacheCreation: 3.75, cacheRead: 0.3 },
-  "claude-haiku-4": { input: 0.8, output: 4, cacheCreation: 1.0, cacheRead: 0.08 },
-};
+import { MODEL_PRICING } from "@session-logger/config.js";
 
 function findPricing(model: string) {
   for (const [prefix, pricing] of Object.entries(MODEL_PRICING)) {
@@ -62,8 +57,8 @@ export function computeSavings(sessions: SessionModelData[]): SavingsSummary {
   const breakdown: SessionSavingsRow[] = [];
 
   for (const session of sessions) {
-    const sonnetCost = repriceSession(session, "claude-sonnet-4");
-    const haikuCost = repriceSession(session, "claude-haiku-4");
+    const sonnetCost = repriceSession(session, "claude-sonnet-4-6");
+    const haikuCost = repriceSession(session, "claude-haiku-4-5");
 
     totalActual += session.cost_usd;
     totalIfSonnet += sonnetCost;

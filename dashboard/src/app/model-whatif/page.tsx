@@ -53,7 +53,7 @@ export default async function ModelWhatIfPage({
   const chartData = comparison.map((m) => {
     const sonnetCost = sessions
       .filter((s) => s.model === m.model)
-      .reduce((sum, s) => sum + repriceSession(s, "claude-sonnet-4"), 0);
+      .reduce((sum, s) => sum + repriceSession(s, "claude-sonnet-4-6"), 0);
     return {
       model: m.model,
       actual: m.total_cost,

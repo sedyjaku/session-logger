@@ -1,8 +1,4 @@
-const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead: number }> = {
-  "claude-opus-4": { input: 15, output: 75, cacheRead: 1.5 },
-  "claude-sonnet-4": { input: 3, output: 15, cacheRead: 0.3 },
-  "claude-haiku-4": { input: 0.8, output: 4, cacheRead: 0.08 },
-};
+import { MODEL_PRICING } from "@session-logger/config.js";
 
 export function cacheHitRatio(cacheRead: number, input: number): number {
   const total = input + cacheRead;
