@@ -18,6 +18,24 @@ export const MODEL_PRICING: Record<
     cacheRead: number;
   }
 > = {
+  "claude-opus-4-6": {
+    input: 5,
+    output: 25,
+    cacheCreation: 6.25,
+    cacheRead: 0.5,
+  },
+  "claude-opus-4-5": {
+    input: 5,
+    output: 25,
+    cacheCreation: 6.25,
+    cacheRead: 0.5,
+  },
+  "claude-opus-4-1": {
+    input: 15,
+    output: 75,
+    cacheCreation: 18.75,
+    cacheRead: 1.5,
+  },
   "claude-opus-4": {
     input: 15,
     output: 75,
@@ -30,10 +48,16 @@ export const MODEL_PRICING: Record<
     cacheCreation: 3.75,
     cacheRead: 0.3,
   },
-  "claude-haiku-4": {
-    input: 0.8,
-    output: 4,
-    cacheCreation: 1.0,
-    cacheRead: 0.08,
+  "claude-haiku-4-5": {
+    input: 1,
+    output: 5,
+    cacheCreation: 1.25,
+    cacheRead: 0.1,
+  },
+  "claude-haiku-3": {
+    input: 0.25,
+    output: 1.25,
+    cacheCreation: 0.3,
+    cacheRead: 0.03,
   },
 };
